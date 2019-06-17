@@ -10,17 +10,11 @@ from sqlalchemy import create_engine, func, desc,select
 import pandas as pd
 import numpy as np
 
-
-
-engine = create_engine("sqlite:///DataSets/belly_button_biodiversity.sqlite",connect_args={'check_same_thread': False})
-
-
+engine = create_engine("sqlite:///db/belly_button_biodiversity.sqlite",connect_args={'check_same_thread': False})
 Base = automap_base()
-
 Base.prepare(engine, reflect=True)
 
-
-OTU = Base.classes.otu
+Otu = Base.classes.otu
 Samples = Base.classes.samples
 Samples_Metadata= Base.classes.samples_metadata
 
@@ -28,12 +22,22 @@ session = Session(engine)
 
 app = Flask(__name__)
 @app.route("/")
-def index():
+def landing():
     return render_template("myindex.html")
+
+
+
+@app.route('/otu')
+def otu():
+    """Return Otu details"""
+    results = session.query(Otu.lowest_taxonomic_unit_found).all()
+
+    otu_list = list(np.ravel(results))
+    return jsonify(otu_list)
 
 @app.route('/names')
 def names():
-    """Return a list of sample names."""
+    """List of samples by their name."""
 
     stmt = session.query(Samples).statement
     df = pd.read_sql_query(stmt, session.bind)
@@ -41,17 +45,9 @@ def names():
 
     return jsonify(list(df.columns))
 
-@app.route('/otu')
-def otu():
-    """Return a list of OTU descriptions."""
-    results = session.query(OTU.lowest_taxonomic_unit_found).all()
-
-    otu_list = list(np.ravel(results))
-    return jsonify(otu_list)
-
 @app.route('/metadata/<sample>')
-def sample_metadata(sample):
-    """Return the MetaData for a given sample."""
+def sample_detail(sample):
+    """Return the details of sample passed to it."""
     sel = [Samples_Metadata.SAMPLEID, Samples_Metadata.ETHNICITY,
            Samples_Metadata.GENDER, Samples_Metadata.AGE,
            Samples_Metadata.LOCATION, Samples_Metadata.BBTYPE]
@@ -59,20 +55,20 @@ def sample_metadata(sample):
     results = session.query(*sel).\
         filter(Samples_Metadata.SAMPLEID == sample[3:]).all()
 
-    sample_metadata = {}
+    sample_data = {}
     for result in results:
-        sample_metadata['SAMPLEID'] = result[0]
-        sample_metadata['ETHNICITY'] = result[1]
-        sample_metadata['GENDER'] = result[2]
-        sample_metadata['AGE'] = result[3]
-        sample_metadata['LOCATION'] = result[4]
-        sample_metadata['BBTYPE'] = result[5]
+        sample_data['SAMPLEID'] = result[0]
+        sample_data['ETHNICITY'] = result[1]
+        sample_data['GENDER'] = result[2]
+        sample_data['AGE'] = result[3]
+        sample_data['LOCATION'] = result[4]
+        sample_data['BBTYPE'] = result[5]
 
-    return jsonify(sample_metadata)
+    return jsonify(sample_data)
 
-@app.route('/wfreq/<sample>')
-def sample_wfreq(sample):
-    """Return the Weekly Washing Frequency as a number."""
+@app.route('/washfreq/<sample>')
+def sample_washfreq(sample):
+    """Weekly Washing Frequency as no."""
 
     results = session.query(Samples_Metadata.WFREQ).\
         filter(Samples_Metadata.SAMPLEID == sample[3:]).all()
@@ -82,12 +78,12 @@ def sample_wfreq(sample):
 
 @app.route('/samples/<sample>')
 def samples(sample):
-    """Return a list dictionaries containing `otu_ids` and `sample_values`."""
+    
     stmt = session.query(Samples).statement
     df = pd.read_sql_query(stmt, session.bind)
 
     if sample not in df.columns:
-        return jsonify(f"Error! Sample: {sample} Not Found!"), 400
+        return jsonify(f"Oooo! Sample: {sample} Missing!"), 400
 
     df = df[df[sample] > 1]
 
